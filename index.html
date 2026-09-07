@@ -403,7 +403,9 @@ createApp({
     const isSidebarCollapsed = ref(false);
     const isSidebarHidden = ref(false);
     let client = null;
-    let ROOM_CHANNEL = 'wanglaoshi/hsklesson/room_default';
+    
+    // 🔴 修复：将普通变量改为 Vue 的响应式 ref
+    const ROOM_CHANNEL = ref('wanglaoshi/hsklesson/room_default');
 
     const playSound = (type) => {
       try {
@@ -452,7 +454,8 @@ createApp({
 
     const publishMessage = (msg) => {
       if (client && client.connected) {
-        client.publish(ROOM_CHANNEL, JSON.stringify(msg));
+        // 🔴 修复：发布时使用 .value 取值
+        client.publish(ROOM_CHANNEL.value, JSON.stringify(msg));
       }
     };
 
@@ -752,7 +755,7 @@ createApp({
 
     const liveAnswers = ref([]);
 
-    // 智能拼接生成学生端 (student.html) 的访问链接
+    // 🔴 修复：智能拼接生成学生端 (student.html) 的访问链接，且采用响应式的 ROOM_CHANNEL.value
     const qrCodeUrl = computed(() => {
       let href = window.location.href.split('#')[0].split('?')[0];
       let studentUrl = '';
@@ -764,7 +767,7 @@ createApp({
         const lastSlash = href.lastIndexOf('/');
         studentUrl = href.substring(0, lastSlash + 1) + 'student.html';
       }
-      studentUrl += '?topic=' + encodeURIComponent(ROOM_CHANNEL);
+      studentUrl += '?topic=' + encodeURIComponent(ROOM_CHANNEL.value);
       return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(studentUrl)}`;
     });
 
@@ -774,9 +777,10 @@ createApp({
     const loadLessonData = async () => {
       const urlParams = new URLSearchParams(window.location.search);
       const lessonParam = urlParams.get('lesson') || 'hsk4-11';
-      ROOM_CHANNEL = `wanglaoshi/hsklesson/room_${lessonParam}`;
+      // 🔴 修复：修改 ref 值时用 .value
+      ROOM_CHANNEL.value = `wanglaoshi/hsklesson/room_${lessonParam}`;
 
-      // 尝试 1: 读取 JSON 配置文件 (例如 ./data/hsk4-11.json 或 ./hsk4-11.json)
+      // 尝试 1: 读取 JSON 配置文件
       try {
         const jsonPath = `./data/${lessonParam}.json`;
         const res = await fetch(jsonPath);
@@ -789,7 +793,7 @@ createApp({
         console.warn(`未能在 ./data/${lessonParam}.json 找到JSON配置，尝试加载 JS 脚本文件...`);
       }
 
-      // 尝试 2: 动态加载 JS 脚本文件 (例如 lessonHSK4-11.js 或 ./hsk4-11.js)
+      // 尝试 2: 动态加载 JS 脚本文件
       try {
         let scriptName = lessonParam.startsWith('lesson') ? `${lessonParam}.js` : `lesson${lessonParam.toUpperCase()}.js`;
         if (lessonParam === 'hsk4-11') scriptName = 'lessonHSK4-11.js';
@@ -847,10 +851,12 @@ createApp({
         password: 'Classpro2026',
         clientId: 'teacher_' + Math.random().toString(16).substr(2, 8)
       });
-      client.on('connect', ()=>{ client.subscribe(ROOM_CHANNEL); });
+      // 🔴 修复：订阅时使用 .value
+      client.on('connect', ()=>{ client.subscribe(ROOM_CHANNEL.value); });
       
       client.on('message', (topic, message)=>{
-        if(topic !== ROOM_CHANNEL) return;
+        // 🔴 修复：判断订阅时使用 .value
+        if(topic !== ROOM_CHANNEL.value) return;
         try {
           const data = JSON.parse(message.toString());
 
@@ -863,12 +869,19 @@ createApp({
             }
           }
 
-          if ((data.type === 'JOIN' || data.type === 'ECHO_WALL' || data.type === 'BUZZ') && data.name) { 
+          // 🔴 修复：增加对 SUBMIT_ANSWER 的兼容判断
+          if ((data.type === 'JOIN' || data.type === 'ECHO_WALL' || data.type === 'SUBMIT_ANSWER' || data.type === 'BUZZ') && data.name) { 
             activeStudentsSet.add(data.name.trim()); 
           }
           
-          if(data.type === 'ECHO_WALL'){
+          if(data.type === 'ECHO_WALL' || data.type === 'SUBMIT_ANSWER'){
+            // 🔴 修复：补充时间字段以防学生端没有传时间导致样式错乱
+            if (!data.time) {
+                const now = new Date();
+                data.time = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+            }
             liveAnswers.value.unshift(data);
+            
             if(currentActivity.value === 'wc_live' && data.text){
               const w = data.text.trim().substring(0, 10); 
               const ex = wordCloudList.value.find(x => x.text === w);
